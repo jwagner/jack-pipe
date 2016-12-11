@@ -5,7 +5,7 @@ CC = gcc
 #  -g    adds debugging information to the executable file
 #  -Wall turns on most, but not all, compiler warnings
 CFLAGS  = -g -Wall -O3 `pkg-config --cflags --libs jack sndfile`
-PREFIX=/usr/local/
+PREFIX=/usr/local
 # the build target executable:
 TARGET = jack-pipe
 

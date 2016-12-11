@@ -10,5 +10,4 @@ Usage: jack-pipe input.file input_port output_port output.file samples
 libjack-jackd2-dev libsndfile1-dev
 
 ## License
-
 MIT

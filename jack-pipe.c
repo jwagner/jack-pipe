@@ -23,15 +23,20 @@ write_and_exit()
 {
   SNDFILE	*outfile;
   SF_INFO	sfinfo;
+  sf_count_t written;
   sfinfo.channels = 1;
   sfinfo.samplerate = samplerate;
-  sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+  sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
   // jack_client_close (client);
   if (! (outfile = sf_open (output_file_name, SFM_WRITE, &sfinfo))) {
-    fprintf(stderr, "libsndfile error: %s %s\n", sf_strerror (NULL), output_file_name);
+    fprintf (stderr, "libsndfile error: %s %s\n", sf_strerror (NULL), output_file_name);
     exit (1);
   }
-  sf_write_float (outfile, output_file_data, output_file_frames);
+  written = sf_write_float (outfile, output_file_data, output_file_frames);
+  if (written != output_file_frames) {
+    fprintf (stderr, "tried to write %lu samples only %lu were written\n", output_file_frames, written);
+    exit (1);
+  }
   sf_close (outfile);
   exit (0);
 }
@@ -53,13 +58,13 @@ process (jack_nframes_t nframes, void *arg)
 	out = jack_port_get_buffer (output_port, nframes);
 
   // copy input_file_data to
-  long frames_to_write = MIN(nframes, input_file_frames - input_offset);
+  unsigned long frames_to_write = MIN(nframes, input_file_frames - input_offset);
 	memcpy (out, input_file_data + input_offset,
 		sizeof (jack_default_audio_sample_t) * frames_to_write);
-  memset(out, 0, sizeof (jack_default_audio_sample_t));
+  memset(out + frames_to_write, 0, sizeof (jack_default_audio_sample_t) * (nframes - frames_to_write));
   input_offset += frames_to_write;
 
-  long frames_to_read = MIN(nframes, output_file_frames - output_offset);
+  unsigned long frames_to_read = MIN(nframes, output_file_frames - output_offset);
   memcpy (output_file_data + output_offset, in, sizeof (float) * frames_to_read);
   output_offset += frames_to_read;
 
@@ -79,11 +84,11 @@ jack_shutdown (void *arg)
 int
 main (int argc, char *argv[])
 {
-	const char **ports;
 	const char *client_name = "jack-pipe";
 	const char *server_name = NULL;
 	jack_options_t options = JackNullOption;
 	jack_status_t status;
+
   SF_INFO	sfinfo;
   SNDFILE	*infile;
 
@@ -188,31 +193,16 @@ main (int argc, char *argv[])
 	 * it.
 	 */
 
-	ports = jack_get_ports (client, NULL, NULL,
-				JackPortIsPhysical|JackPortIsOutput);
-	if (ports == NULL) {
-		fprintf(stderr, "no physical capture ports\n");
+	if (jack_connect (client, output_port_name, jack_port_name (input_port))) {
+		fprintf (stderr, "cannot connect %s to input ports %s\n", input_port_name, jack_port_name (input_port));
 		exit (1);
 	}
 
-	if (jack_connect (client, ports[0], jack_port_name (input_port))) {
-		fprintf (stderr, "cannot connect input ports\n");
-	}
-
-	free (ports);
-
-	ports = jack_get_ports (client, NULL, NULL,
-				JackPortIsPhysical|JackPortIsInput);
-	if (ports == NULL) {
-		fprintf(stderr, "no physical playback ports\n");
-		exit (1);
-	}
-
-	if (jack_connect (client, jack_port_name (output_port), ports[0])) {
+	if (jack_connect (client, jack_port_name (output_port), input_port_name)) {
 		fprintf (stderr, "cannot connect output ports\n");
+		exit (1);
 	}
 
-	free (ports);
 
 	/* keep running until stopped by the user */
 
